@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ベンガル語-英語-日本語 対訳辞書</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+Bengali:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', 'Noto Sans Bengali', sans-serif; -webkit-overflow-scrolling: touch; }
+        .highlight { background-color: #dbeafe; font-weight: bold; border-radius: 3px; padding: 0 2px; }
+        i { color: #475569; font-style: italic; }
+        .loader { width: 48px; height: 48px; border: 5px solid #cbd5e1; border-bottom-color: #3b82f6; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .tab-scroll-container { overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
+        .tab-scroll-container::-webkit-scrollbar { display: none; }
+        .tab { display: inline-block; cursor: pointer; padding: 8px 16px; margin: 0 4px; border-radius: 9999px; background-color: #e2e8f0; color: #475569; transition: all 0.2s ease-in-out; font-weight: 500; }
+        .tab:hover { background-color: #cbd5e1; }
+        .tab.active { background-color: #3b82f6; color: white; font-weight: 700; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center my-6 md:my-8">
+            <h1 class="text-2xl md:text-4xl font-bold text-slate-900">ベンガル語-英語-日本語 対訳辞書</h1>
+            <p class="mt-2 text-sm md:text-base text-slate-600">Samsad Bengali-English Dictionaryに基づく</p>
+        </header>
+
+        <main>
+            <div class="sticky top-0 bg-slate-50/90 backdrop-blur-sm py-4 z-10">
+                 <div class="max-w-2xl mx-auto">
+                      <div class="relative">
+                           <input type="text" id="searchInput" placeholder="上のタブを選択..." class="w-full px-4 py-3 text-base md:text-lg border-2 border-slate-300 rounded-full shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow duration-200" autocomplete="off" disabled>
+                           <div class="absolute top-0 right-0 h-full flex items-center pr-4 text-slate-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
+                      </div>
+                 </div>
+                 <div id="results-count" class="text-center text-slate-600 mt-3 text-sm h-5"></div>
+                 <div id="tab-container" class="max-w-4xl mx-auto mt-4"></div>
+            </div>
+            
+            <div id="loading-indicator" class="text-center py-16 hidden"><div class="loader mx-auto"></div><p class="text-slate-500 mt-4" id="loading-text">データを読み込み中...</p></div>
+            <div id="welcome-message" class="text-center text-slate-500 py-16"><p class="text-xl">上のタブから文字を選択してください</p></div>
+            <div id="results-container" class="mt-4 md:mt-6 max-w-4xl mx-auto"></div>
+            <div id="no-results" class="text-center text-slate-500 py-16 hidden"><p class="text-xl">検索結果が見つかりませんでした。</p></div>
+        </main>
+
+        <footer class="text-center text-xs md:text-sm text-slate-500 mt-12 py-6 border-t border-slate-200">
+            <p>Copyright © 2000 by Shishu Sahitya Samsad.</p>
+        </footer>
+    </div>
+
+    <script>
+        let currentDictionary = [];
+        const vowels = [{key: 'a', char: 'অ'}, {key: 'aa', char: 'আ'}, {key: 'i', char: 'ই'} /* ... more vowels */];
+        const consonants = [{key: 'ka', char: 'ক'}, {key: 'kha', char: 'খ'}, {key: 'ga', char: 'গ'} /* ... more consonants */];
+
+        const searchInput = document.getElementById('searchInput');
+        const resultsContainer = document.getElementById('results-container');
+        const noResults = document.getElementById('no-results');
+        const resultsCount = document.getElementById('results-count');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const tabContainer = document.getElementById('tab-container');
+
+        function italicizePOS(text) {
+             const posRegex = /^([a-z&]+\.|[一-龯ぁ-んァ-ン]+・?[一-龯ぁ-んァ-ン]+\.)/i;
+             return text.split(/(\s|。)/).map(part => part.replace(posRegex, '<i>$1</i>')).join('');
+        }
+        function highlightText(text, query) {
+             if (!query) return text;
+            const safeQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(`(${safeQuery})`, 'gi');
+            return text.replace(regex, `<span class="highlight">$1</span>`);
+        }
+        
+        function displayResults(query = '') {
+            const normalizedQuery = query.trim().toLowerCase();
+            const filteredData = normalizedQuery
+                ? currentDictionary.filter(item => 
+                    item.bengali.toLowerCase().includes(normalizedQuery) ||
+                    item.pronunciation.toLowerCase().includes(normalizedQuery) ||
+                    item.english.toLowerCase().includes(normalizedQuery) ||
+                    item.japanese.toLowerCase().includes(normalizedQuery)
+                )
+                : currentDictionary;
+
+            resultsContainer.innerHTML = '';
+            noResults.classList.toggle('hidden', filteredData.length > 0);
+            resultsCount.textContent = filteredData.length > 0 ? `${filteredData.length}件の結果を表示中` : '結果が見つかりません';
+
+            const fragment = document.createDocumentFragment();
+            filteredData.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-slate-200 mb-4 break-words';
+                const processedEnglish = highlightText(italicizePOS(item.english), query).replace(/~/g, `<b>${item.bengali.replace(/\d/g, '')}</b>`).replace(/☐/g, '<br>');
+                const processedJapanese = highlightText(italicizePOS(item.japanese), query).replace(/~/g, `<b>${item.bengali.replace(/\d/g, '')}</b>`).replace(/☐/g, '<br>');
+
+                card.innerHTML = `
+                    <div>
+                        <h2 class="text-2xl sm:text-3xl font-bold text-blue-800">${highlightText(item.bengali.replace(/~|☐/g, ''), query)}</h2>
+                        <p class="text-slate-500 italic text-sm sm:text-base">${highlightText(item.pronunciation, query)}</p>
+                    </div>
+                    <div class="space-y-3 mt-4 text-sm sm:text-base">
+                        <div class="p-3 bg-slate-100 rounded"><p class="text-slate-800">${processedEnglish}</p></div>
+                        <div class="p-3 bg-blue-50 rounded"><p class="text-slate-900">${processedJapanese}</p></div>
+                    </div>
+                `;
+                fragment.appendChild(card);
+            });
+            resultsContainer.appendChild(fragment);
+        }
+
+        async function loadDictionary(letterKey) {
+            welcomeMessage.classList.add('hidden');
+            resultsContainer.innerHTML = '';
+            loadingIndicator.classList.remove('hidden');
+            searchInput.disabled = true;
+            searchInput.placeholder = `${letterKey}.json を読込中...`;
+
+            try {
+                const response = await fetch(`${letterKey}.json`);
+                if (!response.ok) throw new Error(`ファイルが見つかりません`);
+                currentDictionary = await response.json();
+                displayResults();
+            } catch (error) {
+                resultsContainer.innerHTML = `<div class="text-center text-red-500 p-8">エラー: ${letterKey}.json の読み込みに失敗しました。</div>`;
+                currentDictionary = [];
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                searchInput.disabled = false;
+                searchInput.placeholder = "絞り込んで検索...";
+                searchInput.focus();
+            }
+        }
+
+        function handleTabClick(e) {
+            const clickedTab = e.target.closest('.tab');
+            if (!clickedTab) return;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            clickedTab.classList.add('active');
+            loadDictionary(clickedTab.dataset.key);
+        }
+
+        function setupTabs() {
+            const createTabs = (letters) => letters.map(l => `<div class="tab" data-key="${l.key}">${l.char}</div>`).join('');
+            tabContainer.innerHTML = `
+                <div><h3 class="text-sm font-bold text-slate-500 my-2 px-4">母音</h3><div class="tab-scroll-container pb-2">${createTabs(vowels)}</div></div>
+                <div><h3 class="text-sm font-bold text-slate-500 my-2 px-4">子音</h3><div class="tab-scroll-container pb-2">${createTabs(consonants)}</div></div>`;
+            tabContainer.addEventListener('click', handleTabClick);
+        }
+
+        searchInput.addEventListener('input', (e) => requestAnimationFrame(() => displayResults(e.target.value)));
+        document.addEventListener('DOMContentLoaded', setupTabs);
+    </script>
+</body>
+</html>
+
